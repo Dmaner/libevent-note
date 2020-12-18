@@ -120,6 +120,10 @@ struct event_callback {
 };
 
 struct event_base;
+
+//////////////////////////////////////
+//         事件处理器实现			///
+//////////////////////////////////////
 struct event {
 	struct event_callback ev_evcallback;
 

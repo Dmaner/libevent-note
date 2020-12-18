@@ -155,13 +155,13 @@
   the following links.
 
   event2/event.h
-  The primary libevent header
+  主要头文件
 
   event2/thread.h
-  Functions for use by multithreaded programs
+  多线程编程相关头文件
 
   event2/buffer.h and event2/bufferevent.h
-  Buffer management for network reading and writing
+  网络缓冲区读写相关函数
 
   event2/util.h
   Utility functions for portable nonblocking network code
@@ -929,24 +929,15 @@ int event_base_got_break(struct event_base *eb);
  * anything else with an argument of the form "short events"
  */
 /**@{*/
-/** Indicates that a timeout has occurred.  It's not necessary to pass
- * this flag to event_for new()/event_assign() to get a timeout. */
-#define EV_TIMEOUT	0x01
-/** Wait for a socket or FD to become readable */
-#define EV_READ		0x02
-/** Wait for a socket or FD to become writeable */
-#define EV_WRITE	0x04
-/** Wait for a POSIX signal to be raised*/
-#define EV_SIGNAL	0x08
-/**
- * Persistent event: won't get removed automatically when activated.
- *
- * When a persistent event with a timeout becomes activated, its timeout
- * is reset to 0.
- */
-#define EV_PERSIST	0x10
-/** Select edge-triggered behavior, if supported by the backend. */
-#define EV_ET		0x20
+///////////////////////////////////////////////////////
+////           libevent支持事件类型                 ////
+///////////////////////////////////////////////////////
+#define EV_TIMEOUT	0x01  // 定时事件
+#define EV_READ		0x02  // 可读事件
+#define EV_WRITE	0x04     // 可写事件
+#define EV_SIGNAL	0x08     // 信号事件
+#define EV_PERSIST	0x10  // 永久事件
+#define EV_ET		0x20     // 边缘触发事件, 比如epoll里的ET模式
 /**
  * If this option is provided, then event_del() will not block in one thread
  * while waiting for the event callback to complete in another thread.
@@ -956,15 +947,7 @@ int event_base_got_break(struct event_base *eb);
  * multithreaded application.  See those functions for more information.
  **/
 #define EV_FINALIZE     0x40
-/**
- * Detects connection close events.  You can use this to detect when a
- * connection has been closed, without having to read all the pending data
- * from a connection.
- *
- * Not all backends support EV_CLOSED.  To detect or require it, use the
- * feature flag EV_FEATURE_EARLY_CLOSE.
- **/
-#define EV_CLOSED	0x80
+#define EV_CLOSED	0x80     // 句柄关闭事件
 /**@}*/
 
 /**
@@ -1052,51 +1035,15 @@ EVENT2_EXPORT_SYMBOL
 void *event_self_cbarg(void);
 
 /**
-  Allocate and assign a new event structure, ready to be added.
+  创建具体事件处理器, 并设置它们从属的Reactor实例
 
-  The function event_new() returns a new event that can be used in
-  future calls to event_add() and event_del().  The fd and events
-  arguments determine which conditions will trigger the event; the
-  callback and callback_arg arguments tell Libevent what to do when the
-  event becomes active.
+  @param base           从属的Reactor实例
+  @param fd             相关句柄
+  @param events         事件类型
+  @param callback       事件触发时的回调函数
+  @param callback_arg   回调函数传入参数
 
-  If events contains one of EV_READ, EV_WRITE, or EV_READ|EV_WRITE, then
-  fd is a file descriptor or socket that should get monitored for
-  readiness to read, readiness to write, or readiness for either operation
-  (respectively).  If events contains EV_SIGNAL, then fd is a signal
-  number to wait for.  If events contains none of those flags, then the
-  event can be triggered only by a timeout or by manual activation with
-  event_active(): In this case, fd must be -1.
-
-  The EV_PERSIST flag can also be passed in the events argument: it makes
-  event_add() persistent until event_del() is called.
-
-  The EV_ET flag is compatible with EV_READ and EV_WRITE, and supported
-  only by certain backends.  It tells Libevent to use edge-triggered
-  events.
-
-  The EV_TIMEOUT flag has no effect here.
-
-  It is okay to have multiple events all listening on the same fds; but
-  they must either all be edge-triggered, or all not be edge triggered.
-
-  When the event becomes active, the event loop will run the provided
-  callback function, with three arguments.  The first will be the provided
-  fd value.  The second will be a bitfield of the events that triggered:
-  EV_READ, EV_WRITE, or EV_SIGNAL.  Here the EV_TIMEOUT flag indicates
-  that a timeout occurred, and EV_ET indicates that an edge-triggered
-  event occurred.  The third event will be the callback_arg pointer that
-  you provide.
-
-  @param base the event base to which the event should be attached.
-  @param fd the file descriptor or signal to be monitored, or -1.
-  @param events desired events to monitor: bitfield of EV_READ, EV_WRITE,
-      EV_SIGNAL, EV_PERSIST, EV_ET.
-  @param callback callback function to be invoked when the event occurs
-  @param callback_arg an argument to be passed to the callback function
-
-  @return a newly allocated struct event that must later be freed with
-    event_free() or NULL if an error occurred.
+  @return               返回创建的struct event, 但记得及时event_free
   @see event_free(), event_add(), event_del(), event_assign()
  */
 EVENT2_EXPORT_SYMBOL
