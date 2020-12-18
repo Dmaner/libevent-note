@@ -83,46 +83,29 @@ extern "C" {
 #define EV_CLOSURE_EVENT_FINALIZE_FREE 6
 /** @} */
 
-/** Structure to define the backend of a given event_base. */
+// 为event_structure提供统一后端接口
 struct eventop {
-	/** The name of this backend. */
+	// 后端技术名称
 	const char *name;
-	/** Function to set up an event_base to use this backend.  It should
-	 * create a new structure holding whatever information is needed to
-	 * run the backend, and return it.  The returned pointer will get
-	 * stored by event_init into the event_base.evbase field.  On failure,
-	 * this function should return NULL. */
+	// 初始化函数
 	void *(*init)(struct event_base *);
-	/** Enable reading/writing on a given fd or signal.  'events' will be
-	 * the events that we're trying to enable: one or more of EV_READ,
-	 * EV_WRITE, EV_SIGNAL, and EV_ET.  'old' will be those events that
-	 * were enabled on this fd previously.  'fdinfo' will be a structure
-	 * associated with the fd by the evmap; its size is defined by the
-	 * fdinfo field below.  It will be set to 0 the first time the fd is
-	 * added.  The function should return 0 on success and -1 on error.
-	 */
+	// 注册事件
 	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
-	/** As "add", except 'events' contains the events we mean to disable. */
+	// 删除事件
 	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
-	/** Function to implement the core of an event loop.  It must see which
-	    added events are ready, and cause event_active to be called for each
-	    active event (usually via event_io_active or such).  It should
-	    return 0 on success and -1 on error.
-	 */
+	// 等待事件
 	int (*dispatch)(struct event_base *, struct timeval *);
-	/** Function to clean up and free our data from the event_base. */
+	// 释放资源
 	void (*dealloc)(struct event_base *);
-	/** Flag: set if we need to reinitialize the event base after we fork.
-	 */
+	// fork是否重新初始化event_base
 	int need_reinit;
-	/** Bit-array of supported event_method_features that this backend can
-	 * provide. */
+	// 一些I/O复用支持的一些特性
 	enum event_method_feature features;
-	/** Length of the extra information we should record for each fd that
-	    has one or more active events.  This information is recorded
-	    as part of the evmap entry for each fd, and passed as an argument
-	    to the add and del functions above.
-	 */
+	// 有的I/O复用机制需要为每个I/O事件队列和信号事件队列分配额外的内存，
+	// 以避免同一个文件描述符被重复插入I/O复用机制的事件表中.
+	// evmap_io_add(或evmap_ io_ _del) 函数在调用eventop的add(或del)方法时，
+	// 将这段内存的起始地址作为第5个参数传递给add (或del)方法。
+	// 下面这个成员则指定了这段内存的长度
 	size_t fdinfo_len;
 };
 
@@ -253,109 +236,82 @@ struct evwatch {
 TAILQ_HEAD(evwatch_list, evwatch);
 
 struct event_base {
-	/** Function pointers and other data to describe this event_base's
-	 * backend. */
+	// 初始化Reactor选择的后端I/O复用机制
 	const struct eventop *evsel;
-	/** Pointer to backend-specific data. */
+	// 指向I/O复用机制真正存储的数据，它通过evsel成员的init函数来初始化
 	void *evbase;
-
-	/** List of changes to tell backend about at next dispatch.  Only used
-	 * by the O(1) backends. */
+	// 事件变化队列。其用途是:如果一个文件描述符上注册的事件被多次修改，则可以使用缓冲.
+	// 来避免重复的系统调用(比如epol1_ctl)。它仅能用于时间复杂度为0(1)的I/O复用技术
 	struct event_changelist changelist;
-
-	/** Function pointers used to describe the backend that this event_base
-	 * uses for signals */
+	// 信号后端处理方法
 	const struct eventop *evsigsel;
-	/** Data to implement the common signal handler code. */
+	// 信号事件处理器使用的数据结构，其中封装了一个由socketpair创建的管道。
+	// 它用于信号处理函数和事件多路分发器之间的通信.
 	struct evsig_info sig;
 
-	/** Number of virtual events */
+	// 虚拟事件,所有事件,激活事件数以及上限
 	int virtual_event_count;
-	/** Maximum number of virtual events active */
 	int virtual_event_count_max;
-	/** Number of total events added to this event_base */
 	int event_count;
-	/** Maximum number of total events added to this event_base */
 	int event_count_max;
-	/** Number of total events active in this event_base */
 	int event_count_active;
-	/** Maximum number of total events active in this event_base */
 	int event_count_active_max;
 
-	/** Set if we should terminate the loop once we're done processing
-	 * events. */
+	// 处理完活动队列任务是否退出
 	int event_gotterm;
-	/** Set if we should terminate the loop immediately */
+	// 是否立即退出
 	int event_break;
-	/** Set if we should start a new instance of the loop immediately. */
+	// 是否启动新事件循环
 	int event_continue;
 
-	/** The currently running priority of events */
+	// 活动队列优先级
 	int event_running_priority;
 
-	/** Set if we're running the event_base_loop function, to prevent
-	 * reentrant invocation. */
+	// 事件循环是否启动
 	int running_loop;
 
-	/** Set to the number of deferred_cbs we've made 'active' in the
-	 * loop.  This is a hack to prevent starvation; it would be smarter
-	 * to just use event_config_set_max_dispatch_interval's max_callbacks
-	 * feature */
+	// 延迟回调函数数
 	int n_deferreds_queued;
 
 	/* Active event management. */
-	/** An array of nactivequeues queues for active event_callbacks (ones
-	 * that have triggered, and whose callbacks need to be called).  Low
-	 * priority numbers are more important, and stall higher ones.
-	 */
+	// 活动事件队列
 	struct evcallback_list *activequeues;
-	/** The length of the activequeues array */
+	// 活动队列长度
 	int nactivequeues;
-	/** A list of event_callbacks that should become active the next time
-	 * we process events, but not this time. */
+	// 稍后活动事件队列
 	struct evcallback_list active_later_queue;
 
 	/* common timeout logic */
 
-	/** An array of common_timeout_list* for all of the common timeout
-	 * values we know. */
+	// 通用定时器队列, 长度以及大小
 	struct common_timeout_list **common_timeout_queues;
-	/** The number of entries used in common_timeout_queues */
 	int n_common_timeouts;
-	/** The total size of common_timeout_queues. */
 	int n_common_timeouts_allocated;
 
-	/** Mapping from file descriptors to enabled (added) events */
+	// 文件标识-I/O事件映射
 	struct event_io_map io;
 
-	/** Mapping from signal numbers to enabled (added) events. */
+	// 信号-信号事件映射
 	struct event_signal_map sigmap;
 
-	/** Priority queue of events with timeouts. */
+	// 时间堆
 	struct min_heap timeheap;
 
-	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
-	 * too often. */
+	// 时间管理相关函数
 	struct timeval tv_cache;
-
 	struct evutil_monotonic_timer monotonic_timer;
-
-	/** Difference between internal time (maybe from clock_gettime) and
-	 * gettimeofday. */
 	struct timeval tv_clock_diff;
-	/** Second in which we last updated tv_clock_diff, in monotonic time. */
 	time_t last_updated_clock_diff;
 
 #ifndef EVENT__DISABLE_THREAD_SUPPORT
 	/* threading support */
-	/** The thread currently running the event_loop for this base */
+	//当前运行event base线程
 	unsigned long th_owner_id;
-	/** A lock to prevent conflicting accesses to this event_base */
+	// base锁
 	void *th_base_lock;
-	/** A condition that gets signalled when we're done processing an
-	 * event with waiters on it. */
+	// 条件变量
 	void *current_event_cond;
-	/** Number of threads blocking on current_event_cond. */
+	// 在当前条件变量上的等待事件
 	int current_event_waiters;
 #endif
 	/** The event whose callback is executing right now */
@@ -374,6 +330,7 @@ struct event_base {
 	int limit_callbacks_after_prio;
 
 	/* Notify main thread to wake up break, etc. */
+	// 唤醒主线程的相关函数
 	/** True if the base already has a pending notify, and we don't need
 	 * to add any more. */
 	int is_notify_pending;

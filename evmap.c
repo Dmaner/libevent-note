@@ -53,9 +53,7 @@
 #include "mm-internal.h"
 #include "changelist-internal.h"
 
-/** An entry for an evmap_io list: notes all the events that want to read or
-	write on a given fd, and the number of each.
-  */
+// I/O事件队列
 struct evmap_io {
 	struct event_dlist events;
 	ev_uint16_t nread;
@@ -63,8 +61,7 @@ struct evmap_io {
 	ev_uint16_t nclose;
 };
 
-/* An entry for an evmap_signal list: notes all the events that want to know
-   when a signal triggers. */
+// 信号事件队列
 struct evmap_signal {
 	struct event_dlist events;
 };
@@ -272,8 +269,11 @@ evmap_io_init(struct evmap_io *entry)
 int
 evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 {
+	// 获得I/O后端复用机制
 	const struct eventop *evsel = base->evsel;
+	// 获得base中的I/O映射表
 	struct event_io_map *io = &base->io;
+	// fd参数对应的I/O队列
 	struct evmap_io *ctx = NULL;
 	int nread, nwrite, nclose, retval = 0;
 	short res = 0, old = 0;
@@ -290,6 +290,7 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 			return (-1);
 	}
 #endif
+	// 在io映射表中添加fd - ctx
 	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init,
 						 evsel->fdinfo_len);
 
@@ -331,9 +332,8 @@ evmap_io_add_(struct event_base *base, evutil_socket_t fd, struct event *ev)
 
 	if (res) {
 		void *extra = ((char*)ctx) + sizeof(struct evmap_io);
-		/* XXX(niels): we cannot mix edge-triggered and
-		 * level-triggered, we should probably assert on
-		 * this. */
+		
+		// 在事件多路分发器中注册事件
 		if (evsel->add(base, ev->ev_fd,
 			old, (ev->ev_events & EV_ET) | res, extra) == -1)
 			return (-1);
@@ -450,6 +450,7 @@ int
 evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 {
 	const struct eventop *evsel = base->evsigsel;
+	// 获得信号map
 	struct event_signal_map *map = &base->sigmap;
 	struct evmap_signal *ctx = NULL;
 
@@ -461,10 +462,12 @@ evmap_signal_add_(struct event_base *base, int sig, struct event *ev)
 			map, sig, sizeof(struct evmap_signal *)) == -1)
 			return (-1);
 	}
+	// 添加sig - ctx
 	GET_SIGNAL_SLOT_AND_CTOR(ctx, map, sig, evmap_signal, evmap_signal_init,
 	    base->evsigsel->fdinfo_len);
 
 	if (LIST_EMPTY(&ctx->events)) {
+		// 注册事件
 		if (evsel->add(base, ev->ev_fd, 0, EV_SIGNAL, NULL)
 		    == -1)
 			return (-1);

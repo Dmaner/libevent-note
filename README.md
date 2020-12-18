@@ -1,6 +1,6 @@
 # Libevent Reading Notes
 
-> Libevent源码阅读和添加中文注释  
+> Libevent源码阅读和添加中文注释, 有些地方没有改中文因为还是英文的意思好理解
 
 **目录结构**
 

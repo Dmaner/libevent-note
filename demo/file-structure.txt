@@ -30,7 +30,7 @@
 ├── evconfig-private.h.in
 ├── evdns.c                         // DNS协议相关函数
 ├── * event-internal.h
-├── * event.c                         // 核心代码
+├── * event.c                       // 核心代码
 ├── event_iocp.c
 ├── event_tagging.c                 // 添加和读取缓冲区中标记数据
 ├── evmap-internal.h
